@@ -41,6 +41,8 @@ func main() {
 		flGraphDriver        = flag.String("s", "", "Force the docker runtime to use a specific storage driver")
 		flHosts              = docker.NewListOpts(docker.ValidateHost)
 		flMtu                = flag.Int("mtu", docker.DefaultNetworkMtu, "Set the containers network mtu")
+		flCert               = flag.String("sslcert", "", "path to SSL certificate file")
+		flKey                = flag.String("sslkey", "", "path to SSL key file")
 	)
 	flag.Var(&flDns, "dns", "Force docker to use specific DNS servers")
 	flag.Var(&flHosts, "H", "Multiple tcp://host:port or unix://path/to/socket to bind in daemon mode, single connection otherwise")
@@ -68,6 +70,11 @@ func main() {
 	if *flDebug {
 		os.Setenv("DEBUG", "1")
 	}
+
+	if (len(*flKey) > 0) != (len(*flCert) > 0) {
+		log.Fatal("sslcert or sslkey set without the other. Please set both to enable https")
+	}
+
 	docker.GITCOMMIT = GITCOMMIT
 	docker.VERSION = VERSION
 	if *flDaemon {
@@ -94,6 +101,8 @@ func main() {
 		job.SetenvBool("InterContainerCommunication", *flInterContainerComm)
 		job.Setenv("GraphDriver", *flGraphDriver)
 		job.SetenvInt("Mtu", *flMtu)
+		job.Setenv("SslKey", *flKey)
+		job.Setenv("SslCert", *flCert)
 		if err := job.Run(); err != nil {
 			log.Fatal(err)
 		}

@@ -19,6 +19,8 @@ type DaemonConfig struct {
 	InterContainerCommunication bool
 	GraphDriver                 string
 	Mtu                         int
+	SslCert                     string
+	SslKey                      string
 }
 
 // ConfigFromJob creates and returns a new DaemonConfig object
@@ -42,6 +44,8 @@ func ConfigFromJob(job *engine.Job) *DaemonConfig {
 	config.DefaultIp = net.ParseIP(job.Getenv("DefaultIp"))
 	config.InterContainerCommunication = job.GetenvBool("InterContainerCommunication")
 	config.GraphDriver = job.Getenv("GraphDriver")
+	config.SslCert = job.Getenv("SslCert")
+	config.SslKey = job.Getenv("SslKey")
 	if mtu := job.GetenvInt("Mtu"); mtu != -1 {
 		config.Mtu = mtu
 	} else {
