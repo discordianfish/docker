@@ -2227,7 +2227,7 @@ func (cli *DockerCli) CmdLoad(args ...string) error {
 
 func (cli *DockerCli) dial() (net.Conn, error) {
 	if cli.useTls && cli.proto != "unix" {
-		return tls.Dial(cli.proto, cli.addr, &tls.Config{})
+		return tls.Dial(cli.proto, cli.addr, cli.tlsConfig)
 	}
 	return net.Dial(cli.proto, cli.addr)
 }

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"github.com/dotcloud/docker"
 	"github.com/dotcloud/docker/engine"
 	"github.com/dotcloud/docker/sysinit"
 	"github.com/dotcloud/docker/utils"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -43,6 +46,7 @@ func main() {
 		flMtu                = flag.Int("mtu", docker.DefaultNetworkMtu, "Set the containers network mtu")
 		flCert               = flag.String("tlscert", "", "path to TLS certificate file")
 		flKey                = flag.String("tlskey", "", "path to TLS key file")
+		flCA                 = flag.String("tlscacert", "", "path to trustworthy CA certificate")
 		flUseTls             = flag.Bool("tls", false, "Enable TLS in daemon or client mode")
 	)
 	flag.Var(&flDns, "dns", "Force docker to use specific DNS servers")
@@ -117,8 +121,18 @@ func main() {
 		if flHosts.Len() > 1 {
 			log.Fatal("Please specify only one -H")
 		}
+		tlsConfig := new(tls.Config)
+		if *flUseTls && len(*flCA) > 0 {
+			certPool := x509.NewCertPool()
+			file, err := ioutil.ReadFile(*flCA)
+			if err != nil {
+				log.Fatal(err)
+			}
+			certPool.AppendCertsFromPEM(file)
+			tlsConfig.RootCAs = certPool
+		}
 		protoAddrParts := strings.SplitN(flHosts.GetAll()[0], "://", 2)
-		if err := docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], *flUseTls, flag.Args()...); err != nil {
+		if err := docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], *flUseTls, tlsConfig, flag.Args()...); err != nil {
 			if sterr, ok := err.(*utils.StatusError); ok {
 				if sterr.Status != "" {
 					log.Println(sterr.Status)
