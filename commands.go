@@ -2223,46 +2223,72 @@ func (cli *DockerCli) CmdLoad(args ...string) error {
 	}
 	return nil
 }
+func (cli *DockerCli) newRequest(method, path string, header http.Header, in io.Reader) (*http.Request, error) {
+	// fixme: refactor client to support redirect
+	re := regexp.MustCompile("/+")
+	path = re.ReplaceAllString(path, "/")
+
+	req, err := http.NewRequest(method, fmt.Sprintf("/v%g%s", APIVERSION, path), in)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = header
+	req.Header.Set("User-Agent", "Docker-Client/"+VERSION)
+	req.Host = cli.addr
+	return req, nil
+}
+
+func (cli *DockerCli) request(method, path string, header http.Header, in io.Reader) (*http.Response, error) {
+	req, err := cli.newRequest(method, path, header, in)
+	dial, err := net.Dial(cli.proto, cli.addr)
+	if err != nil {
+		if strings.Contains(err.Error(), "connection refused") {
+			return nil, ErrConnectionRefused
+		}
+		return nil, err
+	}
+
+	clientconn := httputil.NewClientConn(dial, nil)
+	resp, err := clientconn.Do(req)
+	if err != nil {
+		if strings.Contains(err.Error(), "connection refused") {
+			return nil, ErrConnectionRefused
+		}
+		return nil, err
+	}
+	defer clientconn.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		if len(body) == 0 {
+			return nil, fmt.Errorf("Error :%s", http.StatusText(resp.StatusCode))
+		}
+		return nil, fmt.Errorf("Error: %s", bytes.TrimSpace(body))
+	}
+	return resp, nil
+}
 
 func (cli *DockerCli) call(method, path string, data interface{}) ([]byte, int, error) {
-	var params io.Reader
+	var in io.Reader
+	header := make(http.Header)
 	if data != nil {
 		buf, err := json.Marshal(data)
 		if err != nil {
 			return nil, -1, err
 		}
-		params = bytes.NewBuffer(buf)
+		in = bytes.NewBuffer(buf)
 	}
 
-	// fixme: refactor client to support redirect
-	re := regexp.MustCompile("/+")
-	path = re.ReplaceAllString(path, "/")
-
-	req, err := http.NewRequest(method, fmt.Sprintf("/v%g%s", APIVERSION, path), params)
-	if err != nil {
-		return nil, -1, err
-	}
-	req.Header.Set("User-Agent", "Docker-Client/"+VERSION)
-	req.Host = cli.addr
 	if data != nil {
-		req.Header.Set("Content-Type", "application/json")
+		header.Set("Content-Type", "application/json")
 	} else if method == "POST" {
-		req.Header.Set("Content-Type", "plain/text")
+		header.Set("Content-Type", "plain/text")
 	}
-	dial, err := net.Dial(cli.proto, cli.addr)
+	resp, err := cli.request(method, path, header, in)
 	if err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			return nil, -1, ErrConnectionRefused
-		}
-		return nil, -1, err
-	}
-	clientconn := httputil.NewClientConn(dial, nil)
-	resp, err := clientconn.Do(req)
-	defer clientconn.Close()
-	if err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			return nil, -1, ErrConnectionRefused
-		}
 		return nil, -1, err
 	}
 	defer resp.Body.Close()
@@ -2271,68 +2297,23 @@ func (cli *DockerCli) call(method, path string, data interface{}) ([]byte, int, 
 	if err != nil {
 		return nil, -1, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		if len(body) == 0 {
-			return nil, resp.StatusCode, fmt.Errorf("Error: %s", http.StatusText(resp.StatusCode))
-		}
-		return nil, resp.StatusCode, fmt.Errorf("Error: %s", bytes.TrimSpace(body))
-	}
 	return body, resp.StatusCode, nil
 }
 
-func (cli *DockerCli) stream(method, path string, in io.Reader, out io.Writer, headers map[string][]string) error {
+func (cli *DockerCli) stream(method, path string, in io.Reader, out io.Writer, header http.Header) error {
 	if (method == "POST" || method == "PUT") && in == nil {
 		in = bytes.NewReader([]byte{})
 	}
 
-	// fixme: refactor client to support redirect
-	re := regexp.MustCompile("/+")
-	path = re.ReplaceAllString(path, "/")
-
-	req, err := http.NewRequest(method, fmt.Sprintf("/v%g%s", APIVERSION, path), in)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "Docker-Client/"+VERSION)
-	req.Host = cli.addr
 	if method == "POST" {
-		req.Header.Set("Content-Type", "plain/text")
+		header.Set("Content-Type", "plain/text")
 	}
 
-	if headers != nil {
-		for k, v := range headers {
-			req.Header[k] = v
-		}
-	}
-
-	dial, err := net.Dial(cli.proto, cli.addr)
+	resp, err := cli.request(method, path, header, in)
 	if err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			return fmt.Errorf("Can't connect to docker daemon. Is 'docker -d' running on this host?")
-		}
-		return err
-	}
-	clientconn := httputil.NewClientConn(dial, nil)
-	resp, err := clientconn.Do(req)
-	defer clientconn.Close()
-	if err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			return fmt.Errorf("Can't connect to docker daemon. Is 'docker -d' running on this host?")
-		}
 		return err
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		if len(body) == 0 {
-			return fmt.Errorf("Error :%s", http.StatusText(resp.StatusCode))
-		}
-		return fmt.Errorf("Error: %s", bytes.TrimSpace(body))
-	}
 
 	if matchesContentType(resp.Header.Get("Content-Type"), "application/json") {
 		return utils.DisplayJSONMessagesStream(resp.Body, out, cli.terminalFd, cli.isTerminal)
@@ -2349,17 +2330,10 @@ func (cli *DockerCli) hijack(method, path string, setRawTerminal bool, in io.Rea
 			close(started)
 		}
 	}()
-	// fixme: refactor client to support redirect
-	re := regexp.MustCompile("/+")
-	path = re.ReplaceAllString(path, "/")
-
-	req, err := http.NewRequest(method, fmt.Sprintf("/v%g%s", APIVERSION, path), nil)
+	req, err := cli.newRequest(method, path, map[string][]string{"Content-Type": []string{"plain/text"}}, nil)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "Docker-Client/"+VERSION)
-	req.Header.Set("Content-Type", "plain/text")
-	req.Host = cli.addr
 
 	dial, err := net.Dial(cli.proto, cli.addr)
 	if err != nil {
