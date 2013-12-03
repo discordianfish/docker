@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -54,8 +55,8 @@ func (cli *DockerCli) getMethod(name string) (func(...string) error, bool) {
 	return method.Interface().(func(...string) error), true
 }
 
-func ParseCommands(proto, addr string, args ...string) error {
-	cli := NewDockerCli(os.Stdin, os.Stdout, os.Stderr, proto, addr)
+func ParseCommands(proto, addr string, useTls bool, tlsConfig *tls.Config, args ...string) error {
+	cli := NewDockerCli(os.Stdin, os.Stdout, os.Stderr, proto, addr, useTls, tlsConfig)
 
 	if len(args) > 0 {
 		method, exists := cli.getMethod(args[0])
@@ -2223,6 +2224,14 @@ func (cli *DockerCli) CmdLoad(args ...string) error {
 	}
 	return nil
 }
+
+func (cli *DockerCli) dial() (net.Conn, error) {
+	if cli.useTls && cli.proto != "unix" {
+		return tls.Dial(cli.proto, cli.addr, &tls.Config{})
+	}
+	return net.Dial(cli.proto, cli.addr)
+}
+
 func (cli *DockerCli) newRequest(method, path string, header http.Header, in io.Reader) (*http.Request, error) {
 	// fixme: refactor client to support redirect
 	re := regexp.MustCompile("/+")
@@ -2240,7 +2249,7 @@ func (cli *DockerCli) newRequest(method, path string, header http.Header, in io.
 
 func (cli *DockerCli) request(method, path string, header http.Header, in io.Reader) (*http.Response, error) {
 	req, err := cli.newRequest(method, path, header, in)
-	dial, err := net.Dial(cli.proto, cli.addr)
+	dial, err := cli.dial()
 	if err != nil {
 		if strings.Contains(err.Error(), "connection refused") {
 			return nil, ErrConnectionRefused
@@ -2335,7 +2344,7 @@ func (cli *DockerCli) hijack(method, path string, setRawTerminal bool, in io.Rea
 		return err
 	}
 
-	dial, err := net.Dial(cli.proto, cli.addr)
+	dial, err := cli.dial()
 	if err != nil {
 		if strings.Contains(err.Error(), "connection refused") {
 			return fmt.Errorf("Can't connect to docker daemon. Is 'docker -d' running on this host?")
@@ -2513,7 +2522,7 @@ func getExitCode(cli *DockerCli, containerId string) (bool, int, error) {
 	return c.State.IsRunning(), c.State.GetExitCode(), nil
 }
 
-func NewDockerCli(in io.ReadCloser, out, err io.Writer, proto, addr string) *DockerCli {
+func NewDockerCli(in io.ReadCloser, out, err io.Writer, proto, addr string, useTls bool, tlsConfig *tls.Config) *DockerCli {
 	var (
 		isTerminal = false
 		terminalFd uintptr
@@ -2537,12 +2546,16 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, proto, addr string) *Doc
 		err:        err,
 		isTerminal: isTerminal,
 		terminalFd: terminalFd,
+		useTls:     useTls,
+		tlsConfig:  tlsConfig,
 	}
 }
 
 type DockerCli struct {
 	proto      string
 	addr       string
+	useTls     bool
+	tlsConfig  *tls.Config
 	configFile *auth.ConfigFile
 	in         io.ReadCloser
 	out        io.Writer

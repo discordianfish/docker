@@ -41,8 +41,9 @@ func main() {
 		flGraphDriver        = flag.String("s", "", "Force the docker runtime to use a specific storage driver")
 		flHosts              = docker.NewListOpts(docker.ValidateHost)
 		flMtu                = flag.Int("mtu", docker.DefaultNetworkMtu, "Set the containers network mtu")
-		flCert               = flag.String("sslcert", "", "path to SSL certificate file")
-		flKey                = flag.String("sslkey", "", "path to SSL key file")
+		flCert               = flag.String("tlscert", "", "path to TLS certificate file")
+		flKey                = flag.String("tlskey", "", "path to TLS key file")
+		flUseTls             = flag.Bool("tls", false, "Enable TLS in daemon or client mode")
 	)
 	flag.Var(&flDns, "dns", "Force docker to use specific DNS servers")
 	flag.Var(&flHosts, "H", "Multiple tcp://host:port or unix://path/to/socket to bind in daemon mode, single connection otherwise")
@@ -71,13 +72,12 @@ func main() {
 		os.Setenv("DEBUG", "1")
 	}
 
-	if (len(*flKey) > 0) != (len(*flCert) > 0) {
-		log.Fatal("sslcert or sslkey set without the other. Please set both to enable https")
-	}
-
 	docker.GITCOMMIT = GITCOMMIT
 	docker.VERSION = VERSION
 	if *flDaemon {
+		if *flUseTls && (len(*flKey) == 0 || len(*flCert) == 0) {
+			log.Fatal("TLS enabled but tlscert and/or tlskey missing.")
+		}
 		if flag.NArg() != 0 {
 			flag.Usage()
 			return
@@ -101,8 +101,9 @@ func main() {
 		job.SetenvBool("InterContainerCommunication", *flInterContainerComm)
 		job.Setenv("GraphDriver", *flGraphDriver)
 		job.SetenvInt("Mtu", *flMtu)
-		job.Setenv("SslKey", *flKey)
-		job.Setenv("SslCert", *flCert)
+		job.SetenvBool("UseTls", *flUseTls)
+		job.Setenv("TlsKey", *flKey)
+		job.Setenv("TlsCert", *flCert)
 		if err := job.Run(); err != nil {
 			log.Fatal(err)
 		}
@@ -117,7 +118,7 @@ func main() {
 			log.Fatal("Please specify only one -H")
 		}
 		protoAddrParts := strings.SplitN(flHosts.GetAll()[0], "://", 2)
-		if err := docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], flag.Args()...); err != nil {
+		if err := docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], *flUseTls, flag.Args()...); err != nil {
 			if sterr, ok := err.(*utils.StatusError); ok {
 				if sterr.Status != "" {
 					log.Println(sterr.Status)

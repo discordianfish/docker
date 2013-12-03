@@ -20,8 +20,9 @@ example, however the following command will generate an example one.
 
 .. code-block:: bash
 
-    openssl genrsa -out key.pem 2048
-    openssl req -new -key key.pem -x509 -out cert.pem -days 36525
+    openssl genrsa -out server.pem 2048
+    openssl req -new -key server.pem -x509 -out server.csr -days 36525
+
 
 
 Docker can then run using these certificates. Most commonly you will want to

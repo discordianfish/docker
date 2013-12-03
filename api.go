@@ -1220,11 +1220,11 @@ func ListenAndServe(proto, addr string, srv *Server, logging bool) error {
 		return e
 	}
 
-	if srv.runtime.config.SslCert != "" && srv.runtime.config.SslKey != "" {
+	if srv.runtime.config.UseTls {
 		tlsConfig := &tls.Config{}
 		tlsConfig.NextProtos = []string{"http/1.1"}
 		tlsConfig.Certificates = make([]tls.Certificate, 1)
-		cert, err := tls.LoadX509KeyPair(srv.runtime.config.SslCert, srv.runtime.config.SslKey)
+		cert, err := tls.LoadX509KeyPair(srv.runtime.config.TlsCert, srv.runtime.config.TlsKey)
 		if err != nil {
 			return fmt.Errorf("Couldn't load X509 key pair: %s", err)
 		}
