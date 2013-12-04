@@ -19,7 +19,7 @@ type DaemonConfig struct {
 	InterContainerCommunication bool
 	GraphDriver                 string
 	Mtu                         int
-	UseTls                      bool
+	TlsCa                       string
 	TlsCert                     string
 	TlsKey                      string
 }
@@ -45,7 +45,7 @@ func ConfigFromJob(job *engine.Job) *DaemonConfig {
 	config.DefaultIp = net.ParseIP(job.Getenv("DefaultIp"))
 	config.InterContainerCommunication = job.GetenvBool("InterContainerCommunication")
 	config.GraphDriver = job.Getenv("GraphDriver")
-	config.UseTls = job.GetenvBool("UseTls")
+	config.TlsCa = job.Getenv("TlsCa")
 	config.TlsCert = job.Getenv("TlsCert")
 	config.TlsKey = job.Getenv("TlsKey")
 	if mtu := job.GetenvInt("Mtu"); mtu != -1 {

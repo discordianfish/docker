@@ -55,8 +55,8 @@ func (cli *DockerCli) getMethod(name string) (func(...string) error, bool) {
 	return method.Interface().(func(...string) error), true
 }
 
-func ParseCommands(proto, addr string, useTls bool, tlsConfig *tls.Config, args ...string) error {
-	cli := NewDockerCli(os.Stdin, os.Stdout, os.Stderr, proto, addr, useTls, tlsConfig)
+func ParseCommands(proto, addr string, tlsConfig *tls.Config, args ...string) error {
+	cli := NewDockerCli(os.Stdin, os.Stdout, os.Stderr, proto, addr, tlsConfig)
 
 	if len(args) > 0 {
 		method, exists := cli.getMethod(args[0])
@@ -2226,7 +2226,7 @@ func (cli *DockerCli) CmdLoad(args ...string) error {
 }
 
 func (cli *DockerCli) dial() (net.Conn, error) {
-	if cli.useTls && cli.proto != "unix" {
+	if cli.tlsConfig != nil && cli.proto != "unix" {
 		return tls.Dial(cli.proto, cli.addr, cli.tlsConfig)
 	}
 	return net.Dial(cli.proto, cli.addr)
@@ -2522,7 +2522,7 @@ func getExitCode(cli *DockerCli, containerId string) (bool, int, error) {
 	return c.State.IsRunning(), c.State.GetExitCode(), nil
 }
 
-func NewDockerCli(in io.ReadCloser, out, err io.Writer, proto, addr string, useTls bool, tlsConfig *tls.Config) *DockerCli {
+func NewDockerCli(in io.ReadCloser, out, err io.Writer, proto, addr string, tlsConfig *tls.Config) *DockerCli {
 	var (
 		isTerminal = false
 		terminalFd uintptr
@@ -2546,7 +2546,6 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, proto, addr string, useT
 		err:        err,
 		isTerminal: isTerminal,
 		terminalFd: terminalFd,
-		useTls:     useTls,
 		tlsConfig:  tlsConfig,
 	}
 }
@@ -2554,7 +2553,6 @@ func NewDockerCli(in io.ReadCloser, out, err io.Writer, proto, addr string, useT
 type DockerCli struct {
 	proto      string
 	addr       string
-	useTls     bool
 	tlsConfig  *tls.Config
 	configFile *auth.ConfigFile
 	in         io.ReadCloser
