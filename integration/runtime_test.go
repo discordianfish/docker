@@ -29,6 +29,7 @@ const (
 	unitTestStoreBase     = "/var/lib/docker/unit-tests"
 	testDaemonAddr        = "127.0.0.1:4270"
 	testDaemonProto       = "tcp"
+	testTlsCa             = "fixtures/https/ca.crt"
 )
 
 var (
