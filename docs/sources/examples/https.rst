@@ -13,55 +13,46 @@ Normally docker runs via http on ``/var/run/docker.sock``
 
    sudo docker -d &
 
-If you wish to run docker via https you first need to generate a certificate
-and a private key file. How to do this securely is beyond the scope of this
-example, however the following command will generate an example one.
+If you need docker reachable via the network in a safe manner, you can enable
+TLS by pointing docker's `tlscacert` flag to trusted CA certificate.
 
-Unstrusted, self-signed certificates
-------------------------------------
+In daemon mode, it will only allow clients to connect which authenticate via a
+certificate signed by that CA. In client mode, it will only connect to servers
+with a certificate signed by that CA.
 
-.. code-block:: bash
-
-    openssl genrsa -out server.pem 2048
-    openssl req -new -key server.pem -x509 -out server.csr -days 36525
-
-
-
-Docker can then run using these certificates. Most commonly you will want to
-run docker on a different port that the default unix socket when in https mode.
-
-.. code-block:: bash
-
-    sudo docker -d -tlskey=server.key -tlscert=server.crt -H=tcp://0.0.0.0 -H unix:///var/run/docker.sock
-
-Note that when run in this way, the docker client will not work with docker.
-
-Since this certificate is self-signed, the docker client won't be able to connect.
-
-Full featured CA
-----------------
-
-You can use HTTPS with a self-signed certificate by pointing the `tlscacert`
-flag to a trusted CA certificate. The easiest way to create such CA and the
-server keys, is by using "easy-rsa-2.0". Create a copy somewhere, then
-create you CA like this:
+A easy way to create such CA, server and client keys, is by using
+"easy-rsa-2.0". Create a copy somewhere, then create your CA like this:
 
 .. code-block:: bash
 
     ./build-ca
     ./build-dh
 
-Now that we have a CA, you can create a server key and certificate to be
-used like showed above.
+Now that we have a CA, you can create a server key and certificate. Make sure
+that the common name matches the hostname you will use to connect to docker or
+just use '*' for a certificate valid for any hostname:
 
 .. code-block:: bash
 
     ./build-key-server server
 
-Now you can make docker trust the server by pointing `-tlscacert` to your
-CA certificate.
+For client authentication, create a client key and certificate:
 
 .. code-block:: bash
 
-   docker -H=tcp://localhost -tls -tlscacert=/path/to/easy-rsa-2.0/keys/ca.crt
+    ./build-key client
+
+Now you can make docker daemon only accept connections from clients providing
+a certificate trusted by our CA:
+
+.. code-block:: bash
+
+    sudo docker -d -tlscacert=ca.crt -tlscert=server.crt -tlskey=server.key -H=tcp://0.0.0.0
+
+To be able to connect to docker, you now need to provide your client keys and
+certificates:
+
+.. code-block:: bash
+
+   docker -tlscacert=ca.crt -tlscert=client.crt -tlskey=client.key -H=tcp://0.0.0.0
 
