@@ -41,6 +41,10 @@ To list available commands, either run ``docker`` with no parameters or execute
       -p="/var/run/docker.pid": Path to use for daemon PID file
       -r=true: Restart previously running containers
       -s="": Force the docker runtime to use a specific storage driver
+      -tls=false: Use TLS; implied by all other tls* flags
+      -tlscacert="": Trust only remotes providing a certificate signed by the CA given here
+      -tlscert="": Path to TLS certificate file
+      -tlskey="": Path to TLS key file
       -v=false: Print version information and quit
 
 The Docker daemon is the persistent process that manages containers.  Docker uses the same binary for both the 
@@ -1257,7 +1261,3 @@ Show the version of the Docker client, daemon, and latest released version.
 
     Block until a container stops, then print its exit code.
 
-Server Flags
-~~~~~~~~~~~~
-
-.. include:: server/https.rst
