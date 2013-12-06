@@ -43,17 +43,11 @@ func main() {
 		flInterContainerComm = flag.Bool("icc", true, "Enable inter-container communication")
 		flGraphDriver        = flag.String("s", "", "Force the docker runtime to use a specific storage driver")
 		flHosts              = docker.NewListOpts(docker.ValidateHost)
-<<<<<<< HEAD
 		flMtu                = flag.Int("mtu", docker.DefaultNetworkMtu, "Set the containers network mtu")
-		flCert               = flag.String("tlscert", "", "path to TLS certificate file")
-		flKey                = flag.String("tlskey", "", "path to TLS key file")
-		flCA                 = flag.String("tlscacert", "", "path to trustworthy CA certificate")
-		flUseTls             = flag.Bool("tls", false, "Enable TLS in daemon or client mode")
-=======
+		flTls                = flag.Bool("tls", false, "Use TLS; implied by all other tls* flags")
 		flCa                 = flag.String("tlscacert", "", "Trust only remotes providing a certificate signed by the CA given here")
 		flCert               = flag.String("tlscert", "", "Path to TLS certificate file")
 		flKey                = flag.String("tlskey", "", "Path to TLS key file")
->>>>>>> Add client certificate authentication support
 	)
 	flag.Var(&flDns, "dns", "Force docker to use specific DNS servers")
 	flag.Var(&flHosts, "H", "Multiple tcp://host:port or unix://path/to/socket to bind in daemon mode, single connection otherwise")
@@ -77,8 +71,9 @@ func main() {
 	if *bridgeName != "" && *bridgeIp != "" {
 		log.Fatal("You specified -b & -bip, mutually exclusive options. Please specify only one.")
 	}
-	if len(*flCa) > 0 && (len(*flKey) == 0 || len(*flCert) == 0) {
-		log.Fatal("TLS enabled but tlscert and/or tlskey missing.")
+
+	if (len(*flKey) > 0 && len(*flCert) == 0) || (len(*flKey) == 0 && len(*flCert) > 0) {
+		log.Fatalf("Need TLS cert and key to enable TLS authentication")
 	}
 
 	if *flDebug {
@@ -129,26 +124,35 @@ func main() {
 		}
 		protoAddrParts := strings.SplitN(flHosts.GetAll()[0], "://", 2)
 
-		var errc error
+		var (
+			errc error
+			tlsConfig tls.Config
+		)
+
+	  if len(*flCert) > 0 && len(*flKey) > 0 {
+			*flTls = true
+			cert, err := tls.LoadX509KeyPair(*flCert, *flKey)
+			if err != nil {
+				log.Fatalf("Couldn't load X509 key pair: %s", err)
+			}
+			tlsConfig.Certificates = []tls.Certificate{cert}
+		}
+
 		if len(*flCa) > 0 {
+			*flTls = true
 			certPool := x509.NewCertPool()
 			file, err := ioutil.ReadFile(*flCa)
 			if err != nil {
 				log.Fatal(err)
 			}
 			certPool.AppendCertsFromPEM(file)
+			tlsConfig.RootCAs = certPool
+		}
 
-			cert, err := tls.LoadX509KeyPair(*flCert, *flKey)
-			if err != nil {
-				log.Fatalf("Couldn't load X509 key pair: %s", err)
-			}
-			tlsConfig := &tls.Config{
-				RootCAs:      certPool,
-				Certificates: []tls.Certificate{cert},
-			}
-			errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], tlsConfig, flag.Args()...)
-		} else {
-			errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], nil, flag.Args()...)
+		if *flTls {
+				errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], &tlsConfig, flag.Args()...)
+			} else {
+				errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], nil, flag.Args()...)
 		}
 		if errc != nil {
 			if sterr, ok := errc.(*utils.StatusError); ok {

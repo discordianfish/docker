@@ -1221,23 +1221,29 @@ func ListenAndServe(proto, addr string, srv *Server, logging bool) error {
 		return e
 	}
 
-	if len(srv.runtime.config.TlsCa) > 0 {
-		certPool := x509.NewCertPool()
-		file, err := ioutil.ReadFile(srv.runtime.config.TlsCa)
-		if err != nil {
-			return fmt.Errorf("Couldn't read CA certificate: %s", err)
-		}
-		certPool.AppendCertsFromPEM(file)
-
+	protoName := "HTTP"
+	if proto != "unix" && len(srv.runtime.config.TlsCert) > 0 && len(srv.runtime.config.TlsKey) > 0 {
 		cert, err := tls.LoadX509KeyPair(srv.runtime.config.TlsCert, srv.runtime.config.TlsKey)
 		if err != nil {
 			return fmt.Errorf("Couldn't load X509 key pair (%s, %s): %s", err, srv.runtime.config.TlsCert, srv.runtime.config.TlsKey)
 		}
 		tlsConfig := &tls.Config{
-			ClientAuth:   tls.RequireAndVerifyClientCert,
-			ClientCAs:    certPool,
 			NextProtos:   []string{"http/1.1"},
 			Certificates: []tls.Certificate{cert},
+		}
+		if len(srv.runtime.config.TlsCa) > 0 {
+			protoName = "HTTPS/authenticated"
+			certPool := x509.NewCertPool()
+			file, err := ioutil.ReadFile(srv.runtime.config.TlsCa)
+			if err != nil {
+				return fmt.Errorf("Couldn't read CA certificate: %s", err)
+			}
+			certPool.AppendCertsFromPEM(file)
+
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			tlsConfig.ClientCAs = certPool
+		} else {
+			protoName = "HTTPS/open"
 		}
 		l = tls.NewListener(l, tlsConfig)
 	}
@@ -1265,7 +1271,7 @@ func ListenAndServe(proto, addr string, srv *Server, logging bool) error {
 	}
 	httpSrv := http.Server{Addr: addr, Handler: r}
 
-	log.Printf("Listening for HTTP on %s (%s)\n", addr, proto)
+	log.Printf("Listening for %s on %s (%s)\n", protoName, addr, proto)
 	// Tell the init daemon we are accepting requests
 	go systemd.SdNotify("READY=1")
 	return httpSrv.Serve(l)
