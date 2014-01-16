@@ -2339,7 +2339,7 @@ func (cli *DockerCli) hijack(method, path string, setRawTerminal bool, in io.Rea
 			close(started)
 		}
 	}()
-	req, err := cli.newRequest(method, path, map[string][]string{"Content-Type": []string{"plain/text"}}, nil)
+	req, err := cli.newRequest(method, path, map[string][]string{"Content-Type": {"plain/text"}}, nil)
 	if err != nil {
 		return err
 	}

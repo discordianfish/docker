@@ -18,6 +18,8 @@ import (
 var (
 	GITCOMMIT string
 	VERSION   string
+
+	dockerConfDir = os.Getenv("HOME") + "/.docker/"
 )
 
 func main() {
@@ -44,10 +46,11 @@ func main() {
 		flGraphDriver        = flag.String("s", "", "Force the docker runtime to use a specific storage driver")
 		flHosts              = docker.NewListOpts(docker.ValidateHost)
 		flMtu                = flag.Int("mtu", docker.DefaultNetworkMtu, "Set the containers network mtu")
-		flTls                = flag.Bool("tls", false, "Use TLS; implied by all other tls* flags")
-		flCa                 = flag.String("tlscacert", "", "Trust only remotes providing a certificate signed by the CA given here")
-		flCert               = flag.String("tlscert", "", "Path to TLS certificate file")
-		flKey                = flag.String("tlskey", "", "Path to TLS key file")
+		flTls                = flag.Bool("tls", false, "Use TLS; implied by tls-verify flags")
+		flTlsVerify          = flag.Bool("tlsverify", false, "Use TLS and verify the remote (daemon: verify client, client: verify daemon)")
+		flCa                 = flag.String("tlscacert", dockerConfDir+"ca.pem", "Trust only remotes providing a certificate signed by the CA given here")
+		flCert               = flag.String("tlscert", dockerConfDir+"cert.pem", "Path to TLS certificate file")
+		flKey                = flag.String("tlskey", dockerConfDir+"key.pem", "Path to TLS key file")
 	)
 	flag.Var(&flDns, "dns", "Force docker to use specific DNS servers")
 	flag.Var(&flHosts, "H", "Multiple tcp://host:port or unix://path/to/socket to bind in daemon mode, single connection otherwise")
@@ -106,6 +109,8 @@ func main() {
 		job.SetenvBool("InterContainerCommunication", *flInterContainerComm)
 		job.Setenv("GraphDriver", *flGraphDriver)
 		job.SetenvInt("Mtu", *flMtu)
+		job.SetenvBool("Tls", *flTls)
+		job.SetenvBool("TlsVerify", *flTlsVerify)
 		job.Setenv("TlsCa", *flCa)
 		job.Setenv("TlsCert", *flCert)
 		job.Setenv("TlsKey", *flKey)
@@ -125,34 +130,42 @@ func main() {
 		protoAddrParts := strings.SplitN(flHosts.GetAll()[0], "://", 2)
 
 		var (
-			errc error
+			errc      error
 			tlsConfig tls.Config
 		)
+		tlsConfig.InsecureSkipVerify = true
 
-	  if len(*flCert) > 0 && len(*flKey) > 0 {
-			*flTls = true
-			cert, err := tls.LoadX509KeyPair(*flCert, *flKey)
-			if err != nil {
-				log.Fatalf("Couldn't load X509 key pair: %s", err)
-			}
-			tlsConfig.Certificates = []tls.Certificate{cert}
-		}
-
-		if len(*flCa) > 0 {
+		// If we should verify the server, we need to load a trusted ca
+		if *flTlsVerify {
 			*flTls = true
 			certPool := x509.NewCertPool()
 			file, err := ioutil.ReadFile(*flCa)
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("Couldn't read ca cert %s: %s", *flCa, err)
 			}
 			certPool.AppendCertsFromPEM(file)
 			tlsConfig.RootCAs = certPool
+			tlsConfig.InsecureSkipVerify = false
+		}
+
+		// If tls is enabled, try to load and send client certificates
+		if *flTls {
+			_, errCert := os.Stat(*flCert)
+			_, errKey := os.Stat(*flKey)
+			if errCert == nil && errKey == nil {
+				*flTls = true
+				cert, err := tls.LoadX509KeyPair(*flCert, *flKey)
+				if err != nil {
+					log.Fatalf("Couldn't load X509 key pair: %s", err)
+				}
+				tlsConfig.Certificates = []tls.Certificate{cert}
+			}
 		}
 
 		if *flTls {
-				errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], &tlsConfig, flag.Args()...)
-			} else {
-				errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], nil, flag.Args()...)
+			errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], &tlsConfig, flag.Args()...)
+		} else {
+			errc = docker.ParseCommands(protoAddrParts[0], protoAddrParts[1], nil, flag.Args()...)
 		}
 		if errc != nil {
 			if sterr, ok := errc.(*utils.StatusError); ok {

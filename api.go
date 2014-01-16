@@ -1222,7 +1222,7 @@ func ListenAndServe(proto, addr string, srv *Server, logging bool) error {
 	}
 
 	protoName := "HTTP"
-	if proto != "unix" && len(srv.runtime.config.TlsCert) > 0 && len(srv.runtime.config.TlsKey) > 0 {
+	if proto != "unix" && srv.runtime.config.Tls {
 		cert, err := tls.LoadX509KeyPair(srv.runtime.config.TlsCert, srv.runtime.config.TlsKey)
 		if err != nil {
 			return fmt.Errorf("Couldn't load X509 key pair (%s, %s): %s", err, srv.runtime.config.TlsCert, srv.runtime.config.TlsKey)
@@ -1231,7 +1231,7 @@ func ListenAndServe(proto, addr string, srv *Server, logging bool) error {
 			NextProtos:   []string{"http/1.1"},
 			Certificates: []tls.Certificate{cert},
 		}
-		if len(srv.runtime.config.TlsCa) > 0 {
+		if srv.runtime.config.TlsVerify {
 			protoName = "HTTPS/authenticated"
 			certPool := x509.NewCertPool()
 			file, err := ioutil.ReadFile(srv.runtime.config.TlsCa)
