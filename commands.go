@@ -2247,37 +2247,37 @@ func (cli *DockerCli) newRequest(method, path string, header http.Header, in io.
 	return req, nil
 }
 
-func (cli *DockerCli) request(method, path string, header http.Header, in io.Reader) (*http.Response, error) {
+func (cli *DockerCli) request(method, path string, header http.Header, in io.Reader) (*http.Response, *httputil.ClientConn, error) {
 	req, err := cli.newRequest(method, path, header, in)
 	dial, err := cli.dial()
 	if err != nil {
 		if strings.Contains(err.Error(), "connection refused") {
-			return nil, ErrConnectionRefused
+			return nil, nil, ErrConnectionRefused
 		}
-		return nil, err
+		return nil, nil, err
 	}
-
 	clientconn := httputil.NewClientConn(dial, nil)
 	resp, err := clientconn.Do(req)
 	if err != nil {
+		clientconn.Close()
 		if strings.Contains(err.Error(), "connection refused") {
-			return nil, ErrConnectionRefused
+			return nil, nil, ErrConnectionRefused
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	defer clientconn.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
 		body, err := ioutil.ReadAll(resp.Body)
+		clientconn.Close()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(body) == 0 {
-			return nil, fmt.Errorf("Error :%s", http.StatusText(resp.StatusCode))
+			return nil, nil, fmt.Errorf("Error :%s", http.StatusText(resp.StatusCode))
 		}
-		return nil, fmt.Errorf("Error: %s", bytes.TrimSpace(body))
+		return nil, nil, fmt.Errorf("Error: %s", bytes.TrimSpace(body))
 	}
-	return resp, nil
+	return resp, clientconn, nil
 }
 
 func (cli *DockerCli) call(method, path string, data interface{}) ([]byte, int, error) {
@@ -2296,10 +2296,11 @@ func (cli *DockerCli) call(method, path string, data interface{}) ([]byte, int, 
 	} else if method == "POST" {
 		header.Set("Content-Type", "plain/text")
 	}
-	resp, err := cli.request(method, path, header, in)
+	resp, clientconn, err := cli.request(method, path, header, in)
 	if err != nil {
 		return nil, -1, err
 	}
+	defer clientconn.Close()
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -2318,10 +2319,11 @@ func (cli *DockerCli) stream(method, path string, in io.Reader, out io.Writer, h
 		header.Set("Content-Type", "plain/text")
 	}
 
-	resp, err := cli.request(method, path, header, in)
+	resp, clientconn, err := cli.request(method, path, header, in)
 	if err != nil {
 		return err
 	}
+	defer clientconn.Close()
 	defer resp.Body.Close()
 
 	if matchesContentType(resp.Header.Get("Content-Type"), "application/json") {

@@ -28,6 +28,8 @@ func TestHttpsInfo(t *testing.T) {
 	}
 	job := eng.Job("initapi")
 	job.Setenv("Root", root)
+	job.SetenvBool("Tls", true)
+	job.SetenvBool("TlsVerify", true)
 	job.Setenv("TlsCa", "fixtures/https/ca.crt")
 	job.Setenv("TlsCert", "fixtures/https/server.crt")
 	job.Setenv("TlsKey", "fixtures/https/server.key")
