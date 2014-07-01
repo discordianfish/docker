@@ -25,15 +25,17 @@ First, initialize the CA serial file and generate CA private and public
 keys:
 
     $ echo 01 > ca.srl
-    $ openssl genrsa -des3 -out ca-key.pem
+    $ openssl genrsa -des3 -out ca-key.pem 4096
     $ openssl req -new -x509 -days 365 -key ca-key.pem -out ca.pem
 
 Now that we have a CA, you can create a server key and certificate
 signing request. Make sure that "Common Name (e.g., server FQDN or YOUR
-name)" matches the hostname you will use to connect to Docker or just
-use `\*` for a certificate valid for any hostname:
+name)" matches the hostname you will use to connect to Docker. You can
+use `*` for a certificate valid for any hostname. That will work for
+the Docker CLI but might cause problems for other API clients like
+curl.
 
-    $ openssl genrsa -des3 -out server-key.pem
+    $ openssl genrsa -out server-key.pem
     $ openssl req -new -key server-key.pem -out server.csr
 
 Next we're going to sign the key with our CA:
@@ -44,7 +46,7 @@ Next we're going to sign the key with our CA:
 For client authentication, create a client key and certificate signing
 request:
 
-    $ openssl genrsa -des3 -out client-key.pem
+    $ openssl genrsa -out client-key.pem
     $ openssl req -new -key client-key.pem -out client.csr
 
 To make the key suitable for client authentication, create a extensions
@@ -56,12 +58,6 @@ Now sign the key:
 
     $ openssl x509 -req -days 365 -in client.csr -CA ca.pem -CAkey ca-key.pem \
       -out client-cert.pem -extfile extfile.cnf
-
-Finally you need to remove the passphrase from the client and server
-key:
-
-    $ openssl rsa -in server-key.pem -out server-key.pem
-    $ openssl rsa -in client-key.pem -out client-key.pem
 
 Now you can make the Docker daemon only accept connections from clients
 providing a certificate trusted by our CA:
