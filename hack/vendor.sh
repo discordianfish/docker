@@ -55,6 +55,14 @@ clone git github.com/docker/libtrust d273ef2565ca
 
 clone git github.com/Sirupsen/logrus v0.5.1
 
+clone git github.com/prometheus/client_golang              f4be228ba01a
+
+clone git github.com/prometheus/client_model               775af9440e07
+
+clone hg code.google.com/p/goprotobuf                      26b4b5c8a6ec
+
+clone git github.com/matttproud/golang_protobuf_extensions 7a864a042e84
+
 # get Go tip's archive/tar, for xattr support and improved performance
 # TODO after Go 1.4 drops, bump our minimum supported version and drop this vendored dep
 if [ "$1" = '--go' ]; then
