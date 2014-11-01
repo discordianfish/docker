@@ -22,6 +22,7 @@ import (
 	"code.google.com/p/go.net/websocket"
 	"github.com/docker/libcontainer/user"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api"
@@ -954,6 +955,11 @@ func getImagesByName(eng *engine.Engine, version version.Version, w http.Respons
 	return job.Run()
 }
 
+func getMetrics(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	prometheus.Handler().ServeHTTP(w, r)
+	return nil
+}
+
 func postBuild(eng *engine.Engine, version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	if version.LessThan("1.3") {
 		return fmt.Errorf("Multipart upload for build is no longer supported. Please upgrade your docker client.")
@@ -1263,6 +1269,7 @@ func createRouter(eng *engine.Engine, logging, enableCors bool, dockerVersion st
 			"/containers/{name:.*}/top":       getContainersTop,
 			"/containers/{name:.*}/logs":      getContainersLogs,
 			"/containers/{name:.*}/attach/ws": wsContainersAttach,
+			"/metrics":                        getMetrics,
 		},
 		"POST": {
 			"/auth":                         postAuth,
@@ -1304,8 +1311,10 @@ func createRouter(eng *engine.Engine, logging, enableCors bool, dockerVersion st
 			localFct := fct
 			localMethod := method
 
+			name := fmt.Sprintf("%s_%s", method, route)
+
 			// build the handler function
-			f := makeHttpHandler(eng, logging, localMethod, localRoute, localFct, enableCors, version.Version(dockerVersion))
+			f := prometheus.InstrumentHandlerFunc(name, makeHttpHandler(eng, logging, localMethod, localRoute, localFct, enableCors, version.Version(dockerVersion)))
 
 			// add the new route
 			if localRoute == "" {

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+
+	"github.com/docker/docker/metrics"
 )
 
 // A job is the fundamental unit of work in the docker engine.
@@ -48,6 +50,7 @@ const (
 // If the job returns a failure status, an error is returned
 // which includes the status.
 func (job *Job) Run() error {
+	start := time.Now()
 	if job.Eng.IsShutdown() {
 		return fmt.Errorf("engine is shutdown")
 	}
@@ -65,6 +68,7 @@ func (job *Job) Run() error {
 	// FIXME: make this thread-safe
 	// FIXME: implement wait
 	if !job.end.IsZero() {
+		metrics.JobsRunFailed.WithLabelValues(job.Name).Inc()
 		return fmt.Errorf("%s: job has already completed", job.Name)
 	}
 	// Log beginning and end of the job
@@ -77,6 +81,7 @@ func (job *Job) Run() error {
 	var errorMessage = bytes.NewBuffer(nil)
 	job.Stderr.Add(errorMessage)
 	if job.handler == nil {
+		metrics.JobsRunFailed.WithLabelValues(job.Name).Inc()
 		job.Errorf("%s: command not found", job.Name)
 		job.status = 127
 	} else {
@@ -96,9 +101,11 @@ func (job *Job) Run() error {
 		}
 	}
 	if job.status != 0 {
+		metrics.JobsRunFailed.WithLabelValues(job.Name).Inc()
 		return fmt.Errorf("%s", Tail(errorMessage, 1))
 	}
-
+	metrics.JobsRan.WithLabelValues(job.Name).Inc()
+	metrics.JobLatency.WithLabelValues(job.Name).Observe(time.Since(start).Seconds())
 	return nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/docker/docker/metrics"
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/timeutils"
 	"github.com/docker/docker/utils"
@@ -136,6 +137,7 @@ func (eng *Engine) Job(name string, args ...string) *Job {
 		// empty job names are illegal, catchall or not.
 		job.handler = eng.catchall
 	}
+	metrics.JobsCreated.WithLabelValues(name).Inc()
 	return job
 }
 
